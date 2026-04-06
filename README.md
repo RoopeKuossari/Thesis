@@ -17,8 +17,8 @@ A real-time face detection and identification system built with MTCNN (detection
 ### 1. Clone and set up Python environment
 
 ```bash
-git clone <repo-url>
-cd thesis
+git clone https://github.com/RoopeKuossari/Thesis.git
+cd Thesis
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -162,7 +162,7 @@ A face is identified if `distance < IDENTITY_THRESHOLD` (default `0.9`, tunable 
 ## Project structure
 
 ```
-thesis/
+Thesis/                             # repo root
 ├── dataset/
 │   └── lfw-deepfunneled/       # LFW training dataset
 ├── model/
