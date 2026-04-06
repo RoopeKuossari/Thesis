@@ -1,0 +1,22 @@
+# Core ML
+tensorflow[and-cuda]==2.21.0
+tf_keras==2.21.0
+keras==3.14.0
+numpy==2.4.4
+
+# Face detection
+mtcnn==1.0.0
+opencv-python==4.13.0.92
+
+# Face recognition (pretrained ArcFace embeddings)
+deepface==0.0.99
+
+# API
+fastapi==0.135.3
+uvicorn==0.44.0
+python-multipart==0.0.24
+
+# Utilities
+Pillow
+requests==2.33.1
+tqdm==4.67.1
