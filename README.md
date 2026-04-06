@@ -14,34 +14,58 @@ A real-time face detection and identification system built with MTCNN (detection
 
 ## Installation
 
-### 1. Clone and set up Python environment
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/RoopeKuossari/Thesis.git
 cd Thesis
+```
+
+### 2. Set up Python environment
+
+**Linux / WSL2:**
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. GPU setup (NVIDIA on WSL2 or Linux)
+**Windows (Command Prompt or PowerShell):**
+```bat
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 3. GPU setup (NVIDIA)
+
+**Linux / WSL2:**
 
 On WSL2 the CUDA driver comes from Windows — no driver install needed inside WSL.
 Add the library paths so TensorFlow can find them:
 
 ```bash
-# Add to ~/.bashrc
 echo 'export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-Verify GPU is detected:
+**Windows (native):**
+
+Install the [NVIDIA CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) and
+[cuDNN](https://developer.nvidia.com/cudnn). Then install the CUDA-enabled TensorFlow:
+
+```bat
+pip install "tensorflow[and-cuda]"
+```
+
+**Verify GPU is detected (all platforms):**
 ```bash
 python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
 ```
 
-### 3. Install frontend dependencies
+### 4. Install frontend dependencies
 
+**Linux / WSL2 / Windows:**
 ```bash
 cd frontend
 npm install
@@ -60,8 +84,15 @@ A pretrained Siamese model is included. To retrain from scratch:
    ```
 
 2. Run training:
+
+   **Linux / WSL2:**
    ```bash
    python model/train.py
+   ```
+
+   **Windows:**
+   ```bat
+   python model\train.py
    ```
 
 Training uses batch-hard triplet loss combined with a classification head to prevent embedding collapse. The best checkpoint is saved to `model/siamese_model.keras`.
@@ -75,12 +106,22 @@ Training uses batch-hard triplet loss combined with a classification head to pre
 Open two terminals:
 
 **Terminal 1 — Backend API:**
+
+Linux / WSL2:
 ```bash
 source .venv/bin/activate
 uvicorn backend.main:app --reload
 ```
 
+Windows:
+```bat
+.venv\Scripts\activate
+uvicorn backend.main:app --reload
+```
+
 **Terminal 2 — Frontend:**
+
+Linux / WSL2 / Windows:
 ```bash
 cd frontend
 npm run dev
@@ -98,7 +139,14 @@ Open `http://localhost:5173` in your browser.
 3. Click **"Register from webcam"** — repeat from different distances and angles for best results
 
 ### Option B — from photo files
+
+Linux / WSL2:
 ```bash
+python -m backend.register --name "YourName" --images photo1.jpeg photo2.jpeg photo3.jpeg
+```
+
+Windows:
+```bat
 python -m backend.register --name "YourName" --images photo1.jpeg photo2.jpeg photo3.jpeg
 ```
 
@@ -164,27 +212,27 @@ A face is identified if `distance < IDENTITY_THRESHOLD` (default `0.9`, tunable 
 ```
 Thesis/                             # repo root
 ├── dataset/
-│   └── lfw-deepfunneled/       # LFW training dataset
+│   └── lfw-deepfunneled/           # LFW training dataset
 ├── model/
-│   ├── model.py                # Siamese CNN architecture + triplet loss
-│   ├── train.py                # Training script
-│   ├── migrate_model.py        # One-time weight migration utility
-│   ├── siamese_model.keras     # Trained model weights
-│   └── gallery.json            # Registered identities (embeddings)
+│   ├── model.py                    # Siamese CNN architecture + triplet loss
+│   ├── train.py                    # Training script
+│   ├── migrate_model.py            # One-time weight migration utility
+│   ├── siamese_model.keras         # Trained model weights
+│   └── gallery.json                # Registered identities (embeddings)
 ├── backend/
-│   ├── detector.py             # MTCNN face detection
-│   ├── recognizer.py           # ArcFace embeddings + gallery matching
-│   ├── register.py             # CLI registration tool
-│   └── main.py                 # FastAPI REST API
+│   ├── detector.py                 # MTCNN face detection
+│   ├── recognizer.py               # ArcFace embeddings + gallery matching
+│   ├── register.py                 # CLI registration tool
+│   └── main.py                     # FastAPI REST API
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx             # Tab layout
-│   │   ├── api.js              # API client
+│   │   ├── App.jsx                 # Tab layout
+│   │   ├── api.js                  # API client
 │   │   └── components/
-│   │       ├── WebcamView.jsx  # Live webcam + registration
-│   │       ├── FileUpload.jsx  # Image upload + identification
-│   │       └── FaceOverlay.jsx # Bounding box drawing
+│   │       ├── WebcamView.jsx      # Live webcam + registration
+│   │       ├── FileUpload.jsx      # Image upload + identification
+│   │       └── FaceOverlay.jsx     # Bounding box drawing
 │   └── package.json
 ├── requirements.txt
-└── notes.md                    # Developer notes
+└── notes.md                        # Developer notes
 ```
