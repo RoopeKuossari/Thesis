@@ -33,3 +33,5 @@ frontend/dist/
 
 # Developer notes (personal)
 notes.md
+
+.env
