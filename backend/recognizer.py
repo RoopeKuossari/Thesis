@@ -144,6 +144,15 @@ class FaceRecognizer:
 
         return {'name': best_name, 'distance': round(best_dist, 4)}
 
+    def get_face_crop(self, image: np.ndarray, box: list[int]) -> np.ndarray:
+        """
+        Return a float32 [0, 1] crop of the face region defined by box [x, y, w, h].
+        Used to attach a face snapshot to Telegram notifications.
+        """
+        x, y, w, h = box
+        crop = image[y:y + h, x:x + w]
+        return crop.astype(np.float32) / 255.0
+
     def identify_image(self, image: np.ndarray) -> list[dict]:
         """
         Detect all faces in `image` and identify each one.

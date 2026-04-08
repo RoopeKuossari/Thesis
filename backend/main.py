@@ -11,12 +11,14 @@ Run:
     uvicorn backend.main:app --reload
 """
 import io
+import asyncio
 import numpy as np
 from PIL import Image, ImageOps
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.recognizer import FaceRecognizer
+from backend.notifier import notify_unknown
 
 app = FastAPI(title='Face Recognition API')
 
@@ -55,6 +57,16 @@ async def identify(image: UploadFile = File(...)):
     results = recognizer.identify_image(img)
     for f in results:
         print(f'  identify: {f["name"]} distance={f["distance"]}')
+
+    # Send Telegram alert for the first unknown face (respects cooldown internally)
+    for f in results:
+        if f['name'] == 'Unknown':
+            face_crop = recognizer.get_face_crop(img, f['box'])
+            asyncio.get_event_loop().run_in_executor(
+                None, notify_unknown, face_crop
+            )
+            break  # one notification per frame is enough
+
     return {'faces': results}
 
 

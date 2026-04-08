@@ -101,6 +101,37 @@ Training uses batch-hard triplet loss combined with a classification head to pre
 
 ---
 
+## Telegram notifications (optional)
+
+The system can send a Telegram alert with a face snapshot when an unknown person is detected.
+
+### Setup
+
+1. Open Telegram and message **@BotFather** → `/newbot` → follow the prompts → copy the token
+2. Send any message to your new bot
+3. Open `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in a browser and copy the `id` value from the `chat` object — that is your chat ID
+
+### Configuration
+
+Create a `.env` file in the project root:
+
+```bash
+export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
+export TELEGRAM_CHAT_ID="987654321"
+```
+
+Load it before starting the backend (see Running the system below).
+
+### Behaviour
+
+- Alert fires only after a face has been **continuously unknown for 5 seconds** — brief misidentifications (bad angle, motion blur) do not trigger it
+- A **60-second cooldown** prevents repeated alerts while the same unknown person stays on screen
+- The alert includes a cropped photo of the face
+
+Both values are tunable at the top of `backend/notifier.py` (`CONFIRM_SECONDS`, `COOLDOWN_SECONDS`).
+
+---
+
 ## Running the system
 
 Open two terminals:
@@ -110,6 +141,7 @@ Open two terminals:
 Linux / WSL2:
 ```bash
 source .venv/bin/activate
+source .env          # load Telegram credentials (if using notifications)
 uvicorn backend.main:app --reload
 ```
 
@@ -117,6 +149,11 @@ Windows:
 ```bat
 .venv\Scripts\activate
 uvicorn backend.main:app --reload
+```
+On Windows, set the env vars manually before starting:
+```bat
+set TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+set TELEGRAM_CHAT_ID=987654321
 ```
 
 **Terminal 2 — Frontend:**
@@ -223,6 +260,7 @@ Thesis/                             # repo root
 │   ├── detector.py                 # MTCNN face detection
 │   ├── recognizer.py               # ArcFace embeddings + gallery matching
 │   ├── register.py                 # CLI registration tool
+│   ├── notifier.py                 # Telegram alert sender
 │   └── main.py                     # FastAPI REST API
 ├── frontend/
 │   ├── src/

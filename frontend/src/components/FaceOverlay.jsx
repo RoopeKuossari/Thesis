@@ -1,15 +1,13 @@
 /**
  * Draws bounding boxes and name labels onto a canvas element.
  *
- * Props:
- *   faces      — array of face result objects from the API
- *   srcWidth   — natural/video width of the source image
- *   srcHeight  — natural/video height of the source image
- *   canvasRef  — ref to the <canvas> element
+ * Face status → box colour:
+ *   'known'       → green  (#00e676)
+ *   'unknown'     → red    (#ff1744)
+ *   'identifying' → yellow (#ffd600)
  */
 export function drawFaces(canvas, faces, srcWidth, srcHeight) {
   if (!canvas || !faces?.length) {
-    // Clear if nothing to draw
     if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
     return
   }
@@ -17,8 +15,7 @@ export function drawFaces(canvas, faces, srcWidth, srcHeight) {
   const ctx = canvas.getContext('2d')
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-  // Scale factors: source pixels → canvas pixels
-  const sx = canvas.width / srcWidth
+  const sx = canvas.width  / srcWidth
   const sy = canvas.height / srcHeight
 
   for (const face of faces) {
@@ -28,8 +25,20 @@ export function drawFaces(canvas, faces, srcWidth, srcHeight) {
     const cw = w * sx
     const ch = h * sy
 
-    const isKnown = face.name !== 'Unknown'
-    const color = isKnown ? '#00e676' : '#ff1744'
+    let color, label
+    if (face.status === 'identifying') {
+      color = '#ffd600'
+      label = 'Identifying…'
+    } else if (face.status === 'known') {
+      color = '#00e676'
+      label = face.distance != null
+        ? `${face.name} (${face.distance.toFixed(3)})`
+        : face.name
+    } else {
+      // unknown
+      color = '#ff1744'
+      label = 'Unknown'
+    }
 
     // Bounding box
     ctx.strokeStyle = color
@@ -37,9 +46,6 @@ export function drawFaces(canvas, faces, srcWidth, srcHeight) {
     ctx.strokeRect(cx, cy, cw, ch)
 
     // Label background
-    const label = isKnown
-      ? `${face.name} (${face.distance.toFixed(3)})`
-      : 'Unknown'
     ctx.font = 'bold 14px sans-serif'
     const textW = ctx.measureText(label).width
     ctx.fillStyle = color
