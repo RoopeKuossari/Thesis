@@ -1,6 +1,6 @@
 # Face Detection & Identification System
 
-A real-time face detection and identification system built with MTCNN (detection), a custom Siamese CNN trained on LFW (embeddings), and ArcFace (pretrained recognition). Includes a FastAPI backend and a React frontend with live webcam and file upload support.
+A real-time face detection and identification system with a **surveillance mode** featuring live streaming, DVR rewind, and event highlights. Built with MTCNN (detection), ArcFace (recognition), a FastAPI backend, and a React frontend.
 
 ---
 
@@ -103,7 +103,7 @@ Training uses batch-hard triplet loss combined with a classification head to pre
 
 ## Telegram notifications (optional)
 
-The system can send a Telegram alert with a face snapshot when an unknown person is detected.
+The system can send a Telegram alert with a face snapshot when an unknown person is detected **and no known person is present in the same frame**.
 
 ### Setup
 
@@ -124,7 +124,8 @@ Load it before starting the backend (see Running the system below).
 
 ### Behaviour
 
-- Alert fires only after a face has been **continuously unknown for 5 seconds** — brief misidentifications (bad angle, motion blur) do not trigger it
+- Alert fires only after a face has been **continuously unknown for 5 seconds** — brief misidentifications do not trigger it
+- Alert is suppressed if **any known person is also in frame**
 - A **60-second cooldown** prevents repeated alerts while the same unknown person stays on screen
 - The alert includes a cropped photo of the face
 
@@ -168,10 +169,49 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
+## Using the Surveillance System
+
+The app opens on the **Surveillance** tab by default.
+
+1. Click **Start Surveillance** — the browser asks for camera permission, then begins streaming
+2. The live feed is annotated with bounding boxes and a timestamp in the bottom-right corner
+3. Face boxes are colour-coded:
+   - **Green** — known person (matched in gallery)
+   - **Red** — unknown person (no gallery match)
+
+### DVR rewind
+
+While surveillance is running you can rewind and review past footage:
+
+- **Drag the timeline scrubber** leftward to enter DVR mode — the feed pauses at that point in time
+- **Play / Pause** — plays back stored frames at recording speed (~5 fps)
+- **Go Live** — returns to the live stream
+- Up to **10 minutes** of footage is kept in the buffer at all times
+
+### Highlights
+
+Below the timeline, the Highlights section records the **first time each person enters the frame**:
+
+| Highlight colour | Meaning |
+|-----------------|---------|
+| 🟢 Green border | Known person entered frame |
+| 🟡 Yellow border | Unknown person entered, but a known person is also present |
+| 🔴 Red border | Unknown person entered, no known person in frame |
+
+Deduplication rules:
+- If a person stays in frame, only the first entry is recorded
+- If a person leaves and **returns within 3 minutes**, no new highlight is created
+- After 3 minutes, a re-entry generates a new highlight
+
+Use the **filter buttons** (All / Known / Mixed / Unknown) to narrow down the list.
+Click **Jump** on any highlight card to seek directly to that moment in the DVR.
+
+---
+
 ## Registering a person
 
 ### Option A — from the webcam (recommended)
-1. Open the app and start the camera
+1. Switch to the **Webcam** tab and start the camera
 2. Type a name in the field below the video
 3. Click **"Register from webcam"** — repeat from different distances and angles for best results
 
@@ -197,12 +237,27 @@ python -m backend.register --name "YourName" --images photo1.jpeg photo2.jpeg ph
 
 The backend runs at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
 
+### Identification & registration
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/identify` | Detect and identify all faces in an uploaded image |
 | `POST` | `/register` | Register a person with one or more uploaded images |
 | `DELETE` | `/identities/{name}` | Remove a person from the gallery |
 | `GET` | `/identities` | List all registered identities |
+
+### Surveillance
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/surveillance/start` | Activate the surveillance system |
+| `POST` | `/surveillance/stop` | Deactivate surveillance and clear the buffer |
+| `POST` | `/surveillance/ingest` | Receive an annotated JPEG frame from the browser |
+| `GET` | `/surveillance/stream` | MJPEG live stream of annotated frames |
+| `GET` | `/surveillance/frame?t={ms}` | Stored frame closest to Unix timestamp (ms) |
+| `GET` | `/surveillance/buffer` | Buffer metadata: start/end timestamps, frame count |
+| `GET` | `/surveillance/highlights` | Highlight event list for the current session |
+| `GET` | `/surveillance/highlight/{id}/image` | Thumbnail JPEG for a specific highlight |
 
 ### Example with curl
 
@@ -222,9 +277,12 @@ curl http://localhost:8000/identities | python -m json.tool
 
 # Remove a person
 curl -X DELETE http://localhost:8000/identities/Alice | python -m json.tool
+
+# Get surveillance highlights
+curl http://localhost:8000/surveillance/highlights | python -m json.tool
 ```
 
-### Response format
+### Response format (`/identify`)
 
 ```json
 {
@@ -259,17 +317,19 @@ Thesis/                             # repo root
 ├── backend/
 │   ├── detector.py                 # MTCNN face detection
 │   ├── recognizer.py               # ArcFace embeddings + gallery matching
+│   ├── surveillance.py             # Surveillance: ingest, ring buffer, highlights
 │   ├── register.py                 # CLI registration tool
 │   ├── notifier.py                 # Telegram alert sender
 │   └── main.py                     # FastAPI REST API
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx                 # Tab layout
+│   │   ├── App.jsx                 # Tab layout (Surveillance / Webcam / File Upload)
 │   │   ├── api.js                  # API client
 │   │   └── components/
+│   │       ├── SurveillanceView.jsx # Live stream, DVR rewind, highlights
 │   │       ├── WebcamView.jsx      # Live webcam + registration
 │   │       ├── FileUpload.jsx      # Image upload + identification
-│   │       └── FaceOverlay.jsx     # Bounding box drawing
+│   │       └── FaceOverlay.jsx     # Bounding box drawing (canvas)
 │   └── package.json
 ├── requirements.txt
 └── notes.md                        # Developer notes

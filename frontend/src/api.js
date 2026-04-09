@@ -27,3 +27,35 @@ export async function listIdentities() {
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
+
+export async function startSurveillance(cameraIndex = 0) {
+  const res = await fetch(`${BASE}/surveillance/start?camera_index=${cameraIndex}`, { method: 'POST' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function stopSurveillance() {
+  const res = await fetch(`${BASE}/surveillance/stop`, { method: 'POST' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getSurveillanceBuffer() {
+  const res = await fetch(`${BASE}/surveillance/buffer`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getHighlights() {
+  const res = await fetch(`${BASE}/surveillance/highlights`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function ingestSurveillanceFrame(blob) {
+  const form = new FormData()
+  form.append('image', new File([blob], 'frame.jpeg', { type: 'image/jpeg' }))
+  const res = await fetch(`${BASE}/surveillance/ingest`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
