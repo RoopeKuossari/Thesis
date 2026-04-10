@@ -35,7 +35,10 @@ _first_unknown_at: float = 0.0   # when the current unknown streak started
 _last_unknown_at:  float = 0.0   # last time an unknown was seen
 
 
-def notify_unknown(face_crop: np.ndarray | None = None) -> None:
+def notify_unknown(
+    face_crop: np.ndarray | None = None,
+    on_sent=None,
+) -> None:
     """
     Send a Telegram alert for an unknown person.
 
@@ -45,6 +48,9 @@ def notify_unknown(face_crop: np.ndarray | None = None) -> None:
     Args:
         face_crop: Optional float32 (H, W, 3) array in [0, 1] — the cropped
                    face region. If provided it is sent as a photo with the alert.
+        on_sent:   Optional zero-argument callable invoked when a notification
+                   is actually dispatched (after all cooldown/confirm checks).
+                   Used by SurveillanceSystem to count real alerts.
     """
     global _last_notified_at, _first_unknown_at, _last_unknown_at
 
@@ -71,6 +77,8 @@ def notify_unknown(face_crop: np.ndarray | None = None) -> None:
         return
 
     _last_notified_at = now
+    if on_sent is not None:
+        on_sent()
 
     try:
         if face_crop is not None:

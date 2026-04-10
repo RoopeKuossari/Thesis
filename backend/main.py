@@ -2,10 +2,24 @@
 FastAPI backend for face detection and identification.
 
 Endpoints:
-    POST /identify          — detect and identify all faces in an uploaded image
-    POST /register          — register a person with one or more uploaded images
-    DELETE /identities/{name} — remove a person from the gallery
-    GET  /identities        — list all registered identities
+    POST   /identify                              — detect and identify all faces in an uploaded image
+    POST   /register                              — register a person with one or more uploaded images
+    DELETE /identities/{name}                     — remove a person from the gallery
+    GET    /identities                            — list all registered identities
+
+    POST   /surveillance/start                    — activate the surveillance system
+    POST   /surveillance/stop                     — deactivate surveillance and flush to history
+    POST   /surveillance/ingest                   — receive a JPEG frame from the browser
+    GET    /surveillance/stream                   — MJPEG live stream
+    GET    /surveillance/frame?t={ms}             — stored frame closest to timestamp
+    GET    /surveillance/buffer                   — ring-buffer metadata
+    GET    /surveillance/highlights               — live highlight list
+    GET    /surveillance/highlight/{id}/image     — live highlight thumbnail
+
+    GET    /history                               — list all saved sessions
+    GET    /history/{session_id}/frame?t={ms}     — stored frame from a past session
+    GET    /history/{session_id}/highlights       — highlights for a past session
+    GET    /history/{session_id}/highlight/{id}/image — thumbnail for a past highlight
 
 Run:
     uvicorn backend.main:app --reload
@@ -21,6 +35,7 @@ from fastapi.responses import StreamingResponse, Response
 from backend.recognizer import FaceRecognizer
 from backend.notifier import notify_unknown
 from backend.surveillance import SurveillanceSystem
+from backend.history import HistoryDB
 
 app = FastAPI(title='Face Recognition API')
 
@@ -33,7 +48,8 @@ app.add_middleware(
 
 # Shared instances (model and gallery loaded once at startup)
 recognizer   = FaceRecognizer()
-surveillance = SurveillanceSystem(recognizer)
+history_db   = HistoryDB()
+surveillance = SurveillanceSystem(recognizer, db=history_db)
 
 
 def decode_image(upload: UploadFile) -> np.ndarray:
@@ -45,7 +61,7 @@ def decode_image(upload: UploadFile) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
+# Identification & registration endpoints
 # ---------------------------------------------------------------------------
 
 @app.post('/identify')
@@ -123,7 +139,7 @@ async def list_identities():
 
 
 # ---------------------------------------------------------------------------
-# Surveillance endpoints
+# Live surveillance endpoints
 # ---------------------------------------------------------------------------
 
 @app.post('/surveillance/start')
@@ -135,7 +151,7 @@ async def surveillance_start():
 
 @app.post('/surveillance/stop')
 async def surveillance_stop():
-    """Deactivate surveillance and clear the buffer."""
+    """Deactivate surveillance, flush session to history, and clear the buffer."""
     surveillance.stop()
     return {'active': surveillance.is_active}
 
@@ -202,9 +218,51 @@ async def surveillance_highlights():
 
 @app.get('/surveillance/highlight/{highlight_id}/image')
 async def surveillance_highlight_image(highlight_id: str):
-    """Return the JPEG thumbnail for a specific highlight."""
+    """Return the JPEG thumbnail for a specific live highlight."""
     jpeg = surveillance.get_highlight_jpeg(highlight_id)
     if jpeg is None:
         raise HTTPException(status_code=404, detail='Highlight not found.')
     return Response(content=jpeg, media_type='image/jpeg',
+                    headers={'Cache-Control': 'max-age=3600'})
+
+
+# ---------------------------------------------------------------------------
+# History endpoints — past sessions stored on disk
+# ---------------------------------------------------------------------------
+
+@app.get('/history')
+async def history_list():
+    """List all completed surveillance sessions, newest first."""
+    return {'sessions': history_db.list_sessions()}
+
+
+@app.get('/history/{session_id}/frame')
+async def history_frame(
+    session_id: str,
+    t: int = Query(..., description='Unix timestamp in ms'),
+):
+    """Return the stored JPEG frame from a past session closest to timestamp t."""
+    path = history_db.get_frame_at(session_id, t)
+    if path is None:
+        raise HTTPException(status_code=404, detail='Frame not found.')
+    return Response(content=path.read_bytes(), media_type='image/jpeg',
+                    headers={'Cache-Control': 'no-cache'})
+
+
+@app.get('/history/{session_id}/highlights')
+async def history_highlights(session_id: str):
+    """Return all highlights for a past session."""
+    session = history_db.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail='Session not found.')
+    return {'highlights': history_db.get_highlights(session_id)}
+
+
+@app.get('/history/{session_id}/highlight/{highlight_id}/image')
+async def history_highlight_image(session_id: str, highlight_id: str):
+    """Return the JPEG thumbnail for a highlight in a past session."""
+    path = history_db.get_highlight_thumb_path(session_id, highlight_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail='Highlight image not found.')
+    return Response(content=path.read_bytes(), media_type='image/jpeg',
                     headers={'Cache-Control': 'max-age=3600'})

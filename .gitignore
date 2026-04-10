@@ -31,6 +31,9 @@ frontend/dist/
 # DeepFace model cache
 .deepface/
 
+# Surveillance history — footage, thumbnails, and SQLite database
+storage/
+
 # Developer notes (personal)
 notes.md
 

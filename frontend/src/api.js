@@ -59,3 +59,19 @@ export async function ingestSurveillanceFrame(blob) {
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
+
+// ---------------------------------------------------------------------------
+// History
+// ---------------------------------------------------------------------------
+
+export async function listHistory() {
+  const res = await fetch(`${BASE}/history`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getHistoryHighlights(sessionId) {
+  const res = await fetch(`${BASE}/history/${sessionId}/highlights`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}

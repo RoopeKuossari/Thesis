@@ -353,3 +353,53 @@ body {
   font-size: 0.78rem;
   width: calc(100% - 16px);
 }
+
+/* ---------- History ---------- */
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-card {
+  width: 100%;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-card:hover {
+  background: #1a1a1a;
+  border-color: #444;
+}
+
+.session-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.session-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-badge {
+  font-size: 0.75rem;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.stat-highlights { background: #1a2e1a; color: #00e676; border: 1px solid #00e676; }
+.stat-alerts     { background: #2e1a1a; color: #ff6659; border: 1px solid #c62828; }
+.stat-frames     { background: #1a1a2e; color: #90caf9; border: 1px solid #1976d2; }

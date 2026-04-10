@@ -208,6 +208,28 @@ Click **Jump** on any highlight card to seek directly to that moment in the DVR.
 
 ---
 
+## History tab
+
+Every completed surveillance session is automatically saved and accessible from the **History** tab.
+
+### Session list
+
+Each saved session is shown as a card with:
+- Date and time range formatted as `DD.MM.YYYY HH:MM – HH:MM` (or `DD.MM.YYYY HH:MM – DD.MM.YYYY HH:MM` if the session crosses midnight)
+- Highlight count, alert count, and frame count
+
+Sessions older than **7 days** are automatically deleted (both from the database and from disk) the next time surveillance is started.
+
+### Session playback
+
+Click any session card to open it. The playback view works identically to the DVR mode on the Surveillance tab:
+- **Scrub the timeline** to jump to any moment
+- **Play / Pause** — plays back stored frames at recording speed (~5 fps)
+- **⏮ Start / End ⏭** — jump to the beginning or end of the session
+- **Highlights panel** shows all highlight events from that session with filter buttons and **Jump** links
+
+---
+
 ## Registering a person
 
 ### Option A — from the webcam (recommended)
@@ -251,13 +273,22 @@ The backend runs at `http://localhost:8000`. Interactive docs at `http://localho
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/surveillance/start` | Activate the surveillance system |
-| `POST` | `/surveillance/stop` | Deactivate surveillance and clear the buffer |
+| `POST` | `/surveillance/stop` | Deactivate surveillance, flush session to history |
 | `POST` | `/surveillance/ingest` | Receive an annotated JPEG frame from the browser |
 | `GET` | `/surveillance/stream` | MJPEG live stream of annotated frames |
 | `GET` | `/surveillance/frame?t={ms}` | Stored frame closest to Unix timestamp (ms) |
 | `GET` | `/surveillance/buffer` | Buffer metadata: start/end timestamps, frame count |
 | `GET` | `/surveillance/highlights` | Highlight event list for the current session |
 | `GET` | `/surveillance/highlight/{id}/image` | Thumbnail JPEG for a specific highlight |
+
+### History
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/history` | List all completed sessions (newest first) |
+| `GET` | `/history/{session_id}/frame?t={ms}` | Stored frame from a past session closest to timestamp |
+| `GET` | `/history/{session_id}/highlights` | All highlights for a past session |
+| `GET` | `/history/{session_id}/highlight/{id}/image` | Thumbnail JPEG for a past highlight |
 
 ### Example with curl
 
@@ -317,20 +348,29 @@ Thesis/                             # repo root
 ├── backend/
 │   ├── detector.py                 # MTCNN face detection
 │   ├── recognizer.py               # ArcFace embeddings + gallery matching
-│   ├── surveillance.py             # Surveillance: ingest, ring buffer, highlights
+│   ├── surveillance.py             # Surveillance: ingest, ring buffer, highlights, disk persistence
+│   ├── history.py                  # SQLite session history + 7-day retention
 │   ├── register.py                 # CLI registration tool
 │   ├── notifier.py                 # Telegram alert sender
 │   └── main.py                     # FastAPI REST API
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx                 # Tab layout (Surveillance / Webcam / File Upload)
+│   │   ├── App.jsx                 # Tab layout (Surveillance / Webcam / File Upload / History)
 │   │   ├── api.js                  # API client
 │   │   └── components/
 │   │       ├── SurveillanceView.jsx # Live stream, DVR rewind, highlights
+│   │       ├── HistoryView.jsx     # Session list (History tab)
+│   │       ├── SessionPlayback.jsx # DVR playback for a past session
 │   │       ├── WebcamView.jsx      # Live webcam + registration
 │   │       ├── FileUpload.jsx      # Image upload + identification
 │   │       └── FaceOverlay.jsx     # Bounding box drawing (canvas)
 │   └── package.json
+├── storage/                        # Created automatically on first run
+│   ├── history.db                  # SQLite database
+│   └── sessions/
+│       └── YYYY-MM-DD_HH-MM-SS/   # One directory per session
+│           ├── frames/             # Annotated JPEG frames named by Unix ms
+│           └── highlights/         # Highlight thumbnail JPEGs
 ├── requirements.txt
 └── notes.md                        # Developer notes
 ```

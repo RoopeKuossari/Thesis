@@ -2,9 +2,10 @@ import { useState } from 'react'
 import WebcamView from './components/WebcamView'
 import FileUpload from './components/FileUpload'
 import SurveillanceView from './components/SurveillanceView'
+import HistoryView from './components/HistoryView'
 import './App.css'
 
-const TABS = ['Surveillance', 'Webcam', 'File Upload']
+const TABS = ['Surveillance', 'Webcam', 'File Upload', 'History']
 
 export default function App() {
   const [tab, setTab] = useState('Surveillance')
@@ -30,6 +31,7 @@ export default function App() {
         {tab === 'Surveillance' && <SurveillanceView />}
         {tab === 'Webcam'       && <WebcamView />}
         {tab === 'File Upload'  && <FileUpload />}
+        {tab === 'History'      && <HistoryView />}
       </main>
     </div>
   )
