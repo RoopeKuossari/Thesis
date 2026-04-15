@@ -16,6 +16,10 @@ fastapi==0.135.3
 uvicorn==0.44.0
 python-multipart==0.0.24
 
+# Authentication
+bcrypt>=4.0.0
+python-jose[cryptography]==3.3.0
+
 # Utilities
 Pillow
 requests==2.33.1

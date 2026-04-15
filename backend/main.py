@@ -2,6 +2,10 @@
 FastAPI backend for face detection and identification.
 
 Endpoints:
+    POST   /auth/login                            — log in, receive httpOnly JWT cookie
+    POST   /auth/logout                           — clear the auth cookie
+    GET    /auth/me                               — return current user (auth check)
+
     POST   /identify                              — detect and identify all faces in an uploaded image
     POST   /register                              — register a person with one or more uploaded images
     DELETE /identities/{name}                     — remove a person from the gallery
@@ -28,14 +32,16 @@ import io
 import asyncio
 import numpy as np
 from PIL import Image, ImageOps
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Query
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, JSONResponse
 
 from backend.recognizer import FaceRecognizer
 from backend.notifier import notify_unknown
 from backend.surveillance import SurveillanceSystem
 from backend.history import HistoryDB
+from backend.auth import decode_token
+from backend.auth_router import router as auth_router
 
 app = FastAPI(title='Face Recognition API')
 
@@ -44,7 +50,29 @@ app.add_middleware(
     allow_origins=['*'],
     allow_methods=['*'],
     allow_headers=['*'],
+    allow_credentials=True,
 )
+
+# ---------------------------------------------------------------------------
+# Auth middleware — all routes require a valid JWT cookie except /auth/*
+# ---------------------------------------------------------------------------
+
+@app.middleware('http')
+async def require_auth(request: Request, call_next):
+    # Let auth endpoints and CORS preflight pass through unauthenticated
+    if request.url.path.startswith('/auth/') or request.method == 'OPTIONS':
+        return await call_next(request)
+
+    token    = request.cookies.get('access_token')
+    username = decode_token(token) if token else None
+
+    if username is None:
+        return JSONResponse(status_code=401, content={'detail': 'Not authenticated.'})
+
+    return await call_next(request)
+
+# Auth router (login / logout / me)
+app.include_router(auth_router)
 
 # Shared instances (model and gallery loaded once at startup)
 recognizer   = FaceRecognizer()

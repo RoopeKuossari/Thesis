@@ -1,5 +1,35 @@
 const BASE = '/api'
 
+// ---------------------------------------------------------------------------
+// Authentication
+// ---------------------------------------------------------------------------
+
+export async function authMe() {
+  const res = await fetch(`${BASE}/auth/me`, { credentials: 'include' })
+  if (!res.ok) throw new Error('Not authenticated')
+  return res.json()
+}
+
+export async function authLogin(username, password) {
+  const res = await fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username, password }),
+  })
+  if (!res.ok) throw new Error('Invalid credentials')
+  return res.json()
+}
+
+export async function authLogout() {
+  const res = await fetch(`${BASE}/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 export async function identifyImage(file) {
   const form = new FormData()
   form.append('image', file)

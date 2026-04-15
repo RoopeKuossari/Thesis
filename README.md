@@ -74,6 +74,44 @@ cd ..
 
 ---
 
+## Authentication
+
+The system requires a login before the UI is accessible. Accounts are managed locally — there is no public registration.
+
+### Create the first account
+
+```bash
+source .venv/bin/activate
+python -m backend.create_user create --username admin
+```
+
+You will be prompted to enter and confirm a password (8+ characters). Additional commands:
+
+```bash
+python -m backend.create_user list                      # list all accounts
+python -m backend.create_user delete --username alice   # remove an account
+```
+
+Passwords are stored as bcrypt hashes — the database never contains plain-text credentials.
+
+### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `JWT_SECRET_KEY` | **Production** | Secret used to sign session tokens. Generate with `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `SECURE_COOKIES` | When using HTTPS | Set to `true` so the session cookie is only sent over HTTPS |
+
+For local development neither variable is required. For port-forwarding both must be set.
+
+Add them to your `.env` file:
+
+```bash
+export JWT_SECRET_KEY="your-generated-secret-here"
+export SECURE_COOKIES=true   # only when HTTPS is configured
+```
+
+---
+
 ## Training (optional)
 
 A pretrained Siamese model is included. To retrain from scratch:
@@ -142,7 +180,7 @@ Open two terminals:
 Linux / WSL2:
 ```bash
 source .venv/bin/activate
-source .env          # load Telegram credentials (if using notifications)
+source .env          # load JWT secret + Telegram credentials
 uvicorn backend.main:app --reload
 ```
 
@@ -165,7 +203,7 @@ cd frontend
 npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+Open `http://localhost:5173` in your browser. You will be prompted to sign in — use the account created in the Authentication step above.
 
 ---
 
@@ -350,14 +388,20 @@ Thesis/                             # repo root
 │   ├── recognizer.py               # ArcFace embeddings + gallery matching
 │   ├── surveillance.py             # Surveillance: ingest, ring buffer, highlights, disk persistence
 │   ├── history.py                  # SQLite session history + 7-day retention
-│   ├── register.py                 # CLI registration tool
+│   ├── auth.py                     # bcrypt password hashing + JWT helpers
+│   ├── auth_router.py              # FastAPI auth endpoints (login / logout / me)
+│   ├── create_user.py              # CLI account management tool
+│   ├── register.py                 # CLI face registration tool
 │   ├── notifier.py                 # Telegram alert sender
-│   └── main.py                     # FastAPI REST API
+│   └── main.py                     # FastAPI REST API + auth middleware
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx                 # Tab layout (Surveillance / Webcam / File Upload / History)
+│   │   ├── App.jsx                 # Tab layout + auth gate + logout button
 │   │   ├── api.js                  # API client
+│   │   ├── context/
+│   │   │   └── AuthContext.jsx     # Auth state provider (useAuth hook)
 │   │   └── components/
+│   │       ├── LoginPage.jsx       # Login form
 │   │       ├── SurveillanceView.jsx # Live stream, DVR rewind, highlights
 │   │       ├── HistoryView.jsx     # Session list (History tab)
 │   │       ├── SessionPlayback.jsx # DVR playback for a past session
