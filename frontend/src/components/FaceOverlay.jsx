@@ -4,6 +4,7 @@
  * Face status → box colour:
  *   'known'       → green  (#00e676)
  *   'unknown'     → red    (#ff1744)
+ *   'spoof'       → orange (#ff9100)
  *   'identifying' → yellow (#ffd600)
  */
 export function drawFaces(canvas, faces, srcWidth, srcHeight) {
@@ -29,6 +30,11 @@ export function drawFaces(canvas, faces, srcWidth, srcHeight) {
     if (face.status === 'identifying') {
       color = '#ffd600'
       label = 'Identifying…'
+    } else if (face.status === 'spoof') {
+      color = '#ff9100'
+      label = face.liveness_score != null
+        ? `Spoof (${face.liveness_score.toFixed(2)})`
+        : 'Spoof'
     } else if (face.status === 'known') {
       color = '#00e676'
       label = face.distance != null

@@ -155,23 +155,43 @@ class FaceRecognizer:
 
     def identify_image(self, image: np.ndarray) -> list[dict]:
         """
-        Detect all faces in `image` and identify each one.
+        Detect all faces in `image`, run liveness detection, then identify each one.
 
         Args:
             image: RGB numpy array (H, W, 3), uint8.
 
         Returns:
-            List of dicts with name, distance, box, detection_conf.
+            List of dicts with name, distance, box, detection_conf, is_real, liveness_score.
+            Spoof faces have name='Spoof' and distance=None; ArcFace is skipped for them.
         """
+        from backend.liveness import check_liveness
+
         detections = detect_and_crop(image)
         results = []
         for det in detections:
+            liveness = check_liveness(image, det['box'])
+
+            if not liveness['is_real']:
+                print(f'  [liveness] SPOOF detected — score={liveness["liveness_score"]}')
+                results.append({
+                    'name':            'Spoof',
+                    'distance':        None,
+                    'box':             det['box'],
+                    'detection_conf':  round(det['confidence'], 4),
+                    'is_real':         False,
+                    'liveness_score':  liveness['liveness_score'],
+                })
+                continue
+
             identity = self.identify_face(det['face'])
+            print(f'  [liveness] real — score={liveness["liveness_score"]}')
             results.append({
-                'name': identity['name'],
-                'distance': identity['distance'],
-                'box': det['box'],
+                'name':           identity['name'],
+                'distance':       identity['distance'],
+                'box':            det['box'],
                 'detection_conf': round(det['confidence'], 4),
+                'is_real':        True,
+                'liveness_score': liveness['liveness_score'],
             })
         return results
 

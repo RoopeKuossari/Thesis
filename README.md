@@ -139,6 +139,36 @@ Training uses batch-hard triplet loss combined with a classification head to pre
 
 ---
 
+## Anti-spoofing (liveness detection)
+
+The system uses **MiniFASNet** (via DeepFace) to reject printed photos and screen-replay attacks before running face recognition. Every detected face is checked for liveness first; spoofs never reach the ArcFace embedding stage.
+
+### How it works
+
+Two lightweight MiniFASNet models (~1.85 MB each) analyse the face at two spatial scales (2.7× and 4.0× around the bounding box). Their softmax predictions are averaged and compared against a threshold.
+
+Model weights are downloaded automatically to `~/.deepface/weights/` on first run.
+
+### Colour coding
+
+| Colour | Meaning |
+|--------|---------|
+| Green | Known person (real face, gallery match) |
+| Red | Unknown person (real face, no gallery match) |
+| Orange | Spoof detected (printed photo or screen) |
+
+### Tuning
+
+The threshold is set in `backend/liveness.py`:
+
+```python
+LIVENESS_THRESHOLD = 0.2   # lower = stricter (more spoofs caught, more false rejections)
+```
+
+The default of `0.2` works well for phone/print attacks. If real faces are being incorrectly rejected, try raising it to `0.3`–`0.4`.
+
+---
+
 ## Telegram notifications (optional)
 
 The system can send a Telegram alert with a face snapshot when an unknown person is detected **and no known person is present in the same frame**.
@@ -360,7 +390,9 @@ curl http://localhost:8000/surveillance/highlights | python -m json.tool
       "name": "Alice",
       "distance": 0.42,
       "box": [x, y, width, height],
-      "detection_conf": 0.999
+      "detection_conf": 0.999,
+      "is_real": true,
+      "liveness_score": 0.87
     }
   ]
 }
@@ -368,6 +400,9 @@ curl http://localhost:8000/surveillance/highlights | python -m json.tool
 
 `distance` is the L2 distance between L2-normalised embeddings (range 0–2).
 A face is identified if `distance < IDENTITY_THRESHOLD` (default `0.9`, tunable in `backend/recognizer.py`).
+
+Spoof faces have `name: "Spoof"` and `distance: null` — ArcFace is skipped for them.
+`liveness_score` is the MiniFASNet confidence that the face is real (range 0–1).
 
 ---
 
@@ -386,6 +421,7 @@ Thesis/                             # repo root
 ├── backend/
 │   ├── detector.py                 # MTCNN face detection
 │   ├── recognizer.py               # ArcFace embeddings + gallery matching
+│   ├── liveness.py                 # MiniFASNet anti-spoofing (liveness detection)
 │   ├── surveillance.py             # Surveillance: ingest, ring buffer, highlights, disk persistence
 │   ├── history.py                  # SQLite session history + 7-day retention
 │   ├── auth.py                     # bcrypt password hashing + JWT helpers

@@ -27,6 +27,13 @@ function iou(a, b) {
   return inter / (a[2] * a[3] + b[2] * b[3] - inter)
 }
 
+// Map an API face result to a display status string.
+function faceStatus(result) {
+  if (result.is_real === false) return 'spoof'
+  if (result.name === 'Unknown') return 'unknown'
+  return 'known'
+}
+
 // ---------------------------------------------------------------------------
 // Match API results to tracked faces, return updated tracker map
 // ---------------------------------------------------------------------------
@@ -57,7 +64,8 @@ function updateTracker(trackerMap, apiResults, now) {
       t._matched = true
       t.name = result.name
       t.distance = result.distance
-      t.status = result.name === 'Unknown' ? 'unknown' : 'known'
+      t.liveness_score = result.liveness_score
+      t.status = faceStatus(result)
     } else {
       // New face — start as identifying (yellow)
       const id = _nextTrackId++
@@ -66,8 +74,9 @@ function updateTracker(trackerMap, apiResults, now) {
         box: result.box,
         name: result.name,
         distance: result.distance,
+        liveness_score: result.liveness_score,
         // If the API already returned on the very first frame, skip yellow
-        status: result.name === 'Unknown' ? 'unknown' : 'known',
+        status: faceStatus(result),
         lastSeen: now,
         _matched: true,
       })

@@ -145,9 +145,11 @@ class SurveillanceSystem:
         faces = self.recognizer.identify_image(frame_rgb)
 
         # Telegram alert — only when no known person is in frame.
+        # Spoof faces are excluded from both the known-person check and alert
+        # triggering; only real unknown faces can fire the notification.
         # on_sent increments the real alert counter only when the notification
         # actually fires (after confirm window and cooldown checks).
-        has_known = any(f['name'] != 'Unknown' for f in faces)
+        has_known = any(f['name'] not in ('Unknown', 'Spoof') for f in faces)
         if not has_known:
             for f in faces:
                 if f['name'] == 'Unknown':
@@ -244,7 +246,9 @@ class SurveillanceSystem:
     # ------------------------------------------------------------------
 
     def _check_highlights(self, faces: list, img: Image.Image, now: float):
-        current_known      = {f['name'] for f in faces if f['name'] != 'Unknown'}
+        # Spoof faces are excluded from all highlight and tracking logic —
+        # they are not real persons so they must not generate entry events.
+        current_known      = {f['name'] for f in faces if f['name'] not in ('Unknown', 'Spoof')}
         has_unknown        = any(f['name'] == 'Unknown' for f in faces)
         has_known_in_frame = bool(current_known)
 
@@ -331,7 +335,10 @@ class SurveillanceSystem:
 
         for face in faces:
             x, y, w, h = face['box']
-            if face['name'] == 'Unknown':
+            if face['name'] == 'Spoof':
+                color = '#ff9100'
+                label = f"Spoof ({face['liveness_score']:.2f})"
+            elif face['name'] == 'Unknown':
                 color = '#ff1744'
                 label = 'Unknown'
             else:
