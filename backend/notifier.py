@@ -7,7 +7,9 @@ Set these environment variables before starting the server:
                           and visiting https://api.telegram.org/bot<TOKEN>/getUpdates)
 
 A cooldown prevents duplicate alerts for the same unknown person staying
-on screen across many frames.
+on screen across many frames. The decision of *when* to call this — i.e.
+loitering / confirmation gating — is the caller's responsibility (see
+SurveillanceSystem.ingest, which fires only for loitering unknowns).
 """
 import io
 import os
@@ -26,13 +28,7 @@ TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 # Minimum seconds between notifications (prevents spam while unknown stays on screen)
 COOLDOWN_SECONDS = 60
 
-# How long (seconds) a face must be continuously unknown before alerting.
-# Prevents firing on the first frame at startup or brief misidentifications.
-CONFIRM_SECONDS = 5.0
-
 _last_notified_at: float = 0.0
-_first_unknown_at: float = 0.0   # when the current unknown streak started
-_last_unknown_at:  float = 0.0   # last time an unknown was seen
 
 
 def notify_unknown(
@@ -42,17 +38,14 @@ def notify_unknown(
     """
     Send a Telegram alert for an unknown person.
 
-    The alert only fires after the face has been continuously unknown for
-    CONFIRM_SECONDS, preventing false alerts on startup or brief glitches.
-
     Args:
         face_crop: Optional float32 (H, W, 3) array in [0, 1] — the cropped
                    face region. If provided it is sent as a photo with the alert.
         on_sent:   Optional zero-argument callable invoked when a notification
-                   is actually dispatched (after all cooldown/confirm checks).
+                   is actually dispatched (after the cooldown check).
                    Used by SurveillanceSystem to count real alerts.
     """
-    global _last_notified_at, _first_unknown_at, _last_unknown_at
+    global _last_notified_at
 
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         logger.warning(
@@ -61,16 +54,6 @@ def notify_unknown(
         return
 
     now = time.time()
-
-    # If unknown wasn't seen recently, start a fresh confirmation window
-    if now - _last_unknown_at > 5.0:
-        _first_unknown_at = now
-
-    _last_unknown_at = now
-
-    # Must be unknown for CONFIRM_SECONDS before alerting
-    if now - _first_unknown_at < CONFIRM_SECONDS:
-        return
 
     # Cooldown: don't repeat the alert while the same person stays on screen
     if now - _last_notified_at < COOLDOWN_SECONDS:

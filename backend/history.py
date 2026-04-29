@@ -58,12 +58,17 @@ class HistoryDB:
                 session_id  TEXT    NOT NULL
                                 REFERENCES sessions(id) ON DELETE CASCADE,
                 t           INTEGER NOT NULL,
+                end_t       INTEGER,
                 category    TEXT    NOT NULL,
                 name        TEXT,
                 thumb_path  TEXT    NOT NULL,
                 PRIMARY KEY (session_id, id)
             );
         """)
+        # Migration for older DBs that pre-date the end_t column
+        cols = {row['name'] for row in self._con.execute('PRAGMA table_info(highlights)')}
+        if 'end_t' not in cols:
+            self._con.execute('ALTER TABLE highlights ADD COLUMN end_t INTEGER')
         self._con.commit()
 
     # ------------------------------------------------------------------
@@ -120,12 +125,45 @@ class HistoryDB:
         category:     str,
         name:         str | None,
         thumb_path:   Path,
+        end_t:        int | None = None,
     ) -> None:
         self._con.execute(
             """INSERT OR IGNORE INTO highlights
-               (id, session_id, t, category, name, thumb_path)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (highlight_id, session_id, t, category, name, str(thumb_path)),
+               (id, session_id, t, end_t, category, name, thumb_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (highlight_id, session_id, t, end_t, category, name, str(thumb_path)),
+        )
+        self._con.commit()
+
+    def update_highlight(
+        self,
+        session_id:   str,
+        highlight_id: str,
+        end_t:        int | None       = None,
+        category:     str | None       = None,
+        name:         str | None       = None,
+        thumb_path:   Path | None      = None,
+    ) -> None:
+        """
+        Update the live-changing fields of an active highlight: end_t,
+        category, primary name, thumbnail path. Only non-None args are
+        written so callers can update individual fields.
+        """
+        sets, params = [], []
+        if end_t is not None:
+            sets.append('end_t=?');      params.append(end_t)
+        if category is not None:
+            sets.append('category=?');   params.append(category)
+        if name is not None:
+            sets.append('name=?');       params.append(name)
+        if thumb_path is not None:
+            sets.append('thumb_path=?'); params.append(str(thumb_path))
+        if not sets:
+            return
+        params.extend([session_id, highlight_id])
+        self._con.execute(
+            f'UPDATE highlights SET {", ".join(sets)} WHERE session_id=? AND id=?',
+            params,
         )
         self._con.commit()
 
@@ -148,7 +186,7 @@ class HistoryDB:
 
     def get_highlights(self, session_id: str) -> list[dict]:
         rows = self._con.execute(
-            'SELECT id, session_id, t, category, name FROM highlights '
+            'SELECT id, session_id, t, end_t, category, name FROM highlights '
             'WHERE session_id=? ORDER BY t',
             (session_id,),
         ).fetchall()

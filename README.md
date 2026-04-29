@@ -192,12 +192,15 @@ Load it before starting the backend (see Running the system below).
 
 ### Behaviour
 
-- Alert fires only after a face has been **continuously unknown for 5 seconds** — brief misidentifications do not trigger it
-- Alert is suppressed if **any known person is also in frame**
+- Alert fires only when an unknown person is **loitering** (continuously present for 5 seconds) — brief glances don't trigger it
+- Alert is suppressed if **any known person is in frame**, OR was in frame within the last **60 seconds** (grace period — handles a known person briefly stepping out while a guest is still present)
 - A **60-second cooldown** prevents repeated alerts while the same unknown person stays on screen
 - The alert includes a cropped photo of the face
 
-Both values are tunable at the top of `backend/notifier.py` (`CONFIRM_SECONDS`, `COOLDOWN_SECONDS`).
+Tunables:
+- `LOITERING_SECONDS` in `backend/surveillance.py` — how long an unknown must stay before being flagged as loitering (default 5 s)
+- `KNOWN_GRACE_SECONDS` in `backend/surveillance.py` — how long after a known person leaves the alert remains suppressed (default 60 s)
+- `COOLDOWN_SECONDS` in `backend/notifier.py` — gap between repeat alerts (default 60 s)
 
 ---
 
@@ -258,20 +261,23 @@ While surveillance is running you can rewind and review past footage:
 
 ### Highlights
 
-Below the timeline, the Highlights section records the **first time each person enters the frame**:
+Below the timeline, the Highlights section shows **scene intervals** — one card per continuous activity period, displayed as a time range like `16:11:30 – 16:12:45`. Active scenes show `– now` until the scene ends.
 
 | Highlight colour | Meaning |
 |-----------------|---------|
-| 🟢 Green border | Known person entered frame |
-| 🟡 Yellow border | Unknown person entered, but a known person is also present |
-| 🔴 Red border | Unknown person entered, no known person in frame |
+| 🟢 Green border | Known person only in frame |
+| 🟡 Yellow border | Known and unknown person in frame |
+| 🔴 Red border | Unknown person only in frame |
+| 🟠 Orange border | Spoof (printed photo / screen) detected — point-in-time stamp |
 
-Deduplication rules:
-- If a person stays in frame, only the first entry is recorded
-- If a person leaves and **returns within 3 minutes**, no new highlight is created
-- After 3 minutes, a re-entry generates a new highlight
+Whenever the colour would change (e.g. an unknown joins a known-only scene), the **current highlight closes and a new one opens at that moment** — so the timeline shows distinct cards per segment (green → yellow → green produces three cards).
 
-Use the **filter buttons** (All / Known / Mixed / Unknown) to narrow down the list.
+Scene rules:
+- A continuous scene ends when nobody (known or unknown) has been in frame for **5 seconds**
+- Within a scene: known + unknown together → yellow; known only → green; unknown only → red. Each colour is its own highlight; transitions happen with a 5 s grace so a brief glance away doesn't split a segment in two
+- Spoof attempts are recorded as separate **orange stamps** (a single point in time you can jump to). A new stamp is only created if no spoof has been seen for 5 s.
+
+Use the **filter buttons** (All / Known / Mixed / Unknown / Spoof) to narrow down the list.
 Click **Jump** on any highlight card to seek directly to that moment in the DVR.
 
 ---
@@ -392,11 +398,17 @@ curl http://localhost:8000/surveillance/highlights | python -m json.tool
       "box": [x, y, width, height],
       "detection_conf": 0.999,
       "is_real": true,
-      "liveness_score": 0.87
+      "liveness_score": 0.87,
+      "is_loitering": false
     }
   ]
 }
 ```
+
+`is_loitering` is set to `true` for `Unknown` faces when the unknown group has been
+continuously present for `LOITERING_SECONDS` (5 s by default). Known faces and spoofs
+always report `false`. Telegram alerts only fire when at least one face has
+`is_loitering: true` and no known person is in frame.
 
 `distance` is the L2 distance between L2-normalised embeddings (range 0–2).
 A face is identified if `distance < IDENTITY_THRESHOLD` (default `0.9`, tunable in `backend/recognizer.py`).
