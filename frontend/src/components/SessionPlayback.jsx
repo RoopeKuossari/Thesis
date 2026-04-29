@@ -17,6 +17,12 @@ function fmtTime(ms) {
   return new Date(ms).toLocaleTimeString()
 }
 
+function fmtHighlightRange(h) {
+  if (h.category === 'spoof') return fmtTime(h.t)
+  if (h.end_t == null)         return fmtTime(h.t)  // legacy row, no end_t
+  return `${fmtTime(h.t)} – ${fmtTime(h.end_t)}`
+}
+
 function fmtTitle(s) {
   const start = new Date(s.started_at)
   const end   = s.ended_at ? new Date(s.ended_at) : null
@@ -176,6 +182,7 @@ export default function SessionPlayback({ session, onBack }) {
               { key: 'known',         label: '● Known' },
               { key: 'mixed_unknown', label: '● Mixed' },
               { key: 'unknown',       label: '● Unknown' },
+              { key: 'spoof',         label: '● Spoof' },
             ].map(f => (
               <button
                 key={f.key}
@@ -200,8 +207,10 @@ export default function SessionPlayback({ session, onBack }) {
                   alt={h.name || 'Unknown'}
                 />
                 <div className="hl-meta">
-                  <span className="hl-time">{fmtTime(h.t)}</span>
-                  <span className="hl-name">{h.name || 'Unknown'}</span>
+                  <span className="hl-time">{fmtHighlightRange(h)}</span>
+                  <span className="hl-name">
+                    {h.category === 'spoof' ? 'Spoof' : (h.name || 'Unknown')}
+                  </span>
                 </div>
                 <button className="btn btn-secondary hl-jump" onClick={() => jumpTo(h.t)}>
                   Jump

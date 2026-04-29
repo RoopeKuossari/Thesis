@@ -289,11 +289,13 @@ body {
 .hl-filter-known        { color: #00e676; border-color: #00e676; }
 .hl-filter-mixed_unknown { color: #ffd600; border-color: #ffd600; }
 .hl-filter-unknown      { color: #ff1744; border-color: #ff1744; }
+.hl-filter-spoof        { color: #ff9100; border-color: #ff9100; }
 
 .hl-filter-active.hl-filter-all          { background: #2a2a2a; color: #fff; border-color: #555; }
 .hl-filter-active.hl-filter-known        { background: #00e676; color: #000; }
 .hl-filter-active.hl-filter-mixed_unknown { background: #ffd600; color: #000; }
 .hl-filter-active.hl-filter-unknown      { background: #ff1744; color: #fff; }
+.hl-filter-active.hl-filter-spoof        { background: #ff9100; color: #000; }
 
 /* Scrollable card row */
 .hl-cards {
@@ -317,6 +319,7 @@ body {
 .hl-card-known         { border-color: #00e676; }
 .hl-card-mixed_unknown { border-color: #ffd600; }
 .hl-card-unknown       { border-color: #ff1744; }
+.hl-card-spoof         { border-color: #ff9100; }
 
 .hl-img {
   width: 100%;

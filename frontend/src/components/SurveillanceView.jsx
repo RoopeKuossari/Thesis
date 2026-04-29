@@ -17,6 +17,19 @@ function fmt(ms) {
   return new Date(ms).toLocaleTimeString()
 }
 
+// A scene whose end_t is within this many ms of "now" is treated as still
+// live and displayed with "– now" instead of a fixed end time.
+const LIVE_END_THRESHOLD_MS = 6000
+
+function fmtHighlightRange(h) {
+  if (h.category === 'spoof') return fmt(h.t)
+  if (h.end_t == null)         return fmt(h.t)  // legacy row, no end_t
+  if (Date.now() - h.end_t < LIVE_END_THRESHOLD_MS) {
+    return `${fmt(h.t)} – now`
+  }
+  return `${fmt(h.t)} – ${fmt(h.end_t)}`
+}
+
 export default function SurveillanceView() {
   const [mode, setMode]           = useState('stopped') // 'stopped'|'live'|'dvr'
   const [playing, setPlaying]     = useState(false)
@@ -294,6 +307,7 @@ export default function SurveillanceView() {
                 { key: 'known',         label: '● Known' },
                 { key: 'mixed_unknown', label: '● Mixed' },
                 { key: 'unknown',       label: '● Unknown' },
+                { key: 'spoof',         label: '● Spoof' },
               ].map(f => (
                 <button
                   key={f.key}
@@ -321,8 +335,10 @@ export default function SurveillanceView() {
                       alt={h.name || 'Unknown'}
                     />
                     <div className="hl-meta">
-                      <span className="hl-time">{fmt(h.t)}</span>
-                      <span className="hl-name">{h.name || 'Unknown'}</span>
+                      <span className="hl-time">{fmtHighlightRange(h)}</span>
+                      <span className="hl-name">
+                        {h.category === 'spoof' ? 'Spoof' : (h.name || 'Unknown')}
+                      </span>
                     </div>
                     <button className="btn btn-secondary hl-jump" onClick={() => jumpTo(h.t)}>
                       Jump
