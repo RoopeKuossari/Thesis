@@ -5,15 +5,21 @@ Endpoints:
     POST   /auth/login                            — log in, receive httpOnly JWT cookie
     POST   /auth/logout                           — clear the auth cookie
     GET    /auth/me                               — return current user (auth check)
+    GET    /auth/users                            — list users (admin)
+    POST   /auth/users                            — create user (admin)
+    DELETE /auth/users/{username}                 — delete user (admin)
 
-    POST   /identify                              — detect and identify all faces in an uploaded image
-    POST   /register                              — register a person with one or more uploaded images
-    DELETE /identities/{name}                     — remove a person from the gallery
+    POST   /identify                              — detect and identify all faces in an uploaded image (admin)
+    POST   /register                              — register a person with one or more uploaded images (admin)
+    DELETE /identities/{name}                     — remove a person from the gallery (admin)
     GET    /identities                            — list all registered identities
 
-    POST   /surveillance/start                    — activate the surveillance system
-    POST   /surveillance/stop                     — deactivate surveillance and flush to history
-    POST   /surveillance/ingest                   — receive a JPEG frame from the browser
+    GET    /settings                              — current tunable settings
+    PUT    /settings                              — update tunable settings (admin)
+
+    POST   /surveillance/start                    — activate the surveillance system (admin)
+    POST   /surveillance/stop                     — deactivate surveillance and flush to history (admin)
+    POST   /surveillance/ingest                   — receive a JPEG frame from the browser (admin)
     GET    /surveillance/stream                   — MJPEG live stream
     GET    /surveillance/frame?t={ms}             — stored frame closest to timestamp
     GET    /surveillance/buffer                   — ring-buffer metadata
@@ -21,6 +27,7 @@ Endpoints:
     GET    /surveillance/highlight/{id}/image     — live highlight thumbnail
 
     GET    /history                               — list all saved sessions
+    DELETE /history/{session_id}                  — delete a saved session (admin)
     GET    /history/{session_id}/frame?t={ms}     — stored frame from a past session
     GET    /history/{session_id}/highlights       — highlights for a past session
     GET    /history/{session_id}/highlight/{id}/image — thumbnail for a past highlight
@@ -32,15 +39,16 @@ import io
 import asyncio
 import numpy as np
 from PIL import Image, ImageOps
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Query, Request
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Query, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 
+from backend import settings as settings_store
 from backend.recognizer import FaceRecognizer
 from backend.notifier import notify_unknown
 from backend.surveillance import SurveillanceSystem
 from backend.history import HistoryDB
-from backend.auth import decode_token
+from backend.auth import decode_token, require_admin
 from backend.auth_router import router as auth_router
 
 app = FastAPI(title='Face Recognition API')
@@ -54,12 +62,13 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Auth middleware — all routes require a valid JWT cookie except /auth/*
+# Auth middleware — every route requires a valid JWT cookie except /auth/*
+# (login itself doesn't need a cookie). Per-route admin checks live on the
+# endpoints themselves via `Depends(require_admin)`.
 # ---------------------------------------------------------------------------
 
 @app.middleware('http')
 async def require_auth(request: Request, call_next):
-    # Let auth endpoints and CORS preflight pass through unauthenticated
     if request.url.path.startswith('/auth/') or request.method == 'OPTIONS':
         return await call_next(request)
 
@@ -71,7 +80,7 @@ async def require_auth(request: Request, call_next):
 
     return await call_next(request)
 
-# Auth router (login / logout / me)
+# Auth router (login / logout / me / user management)
 app.include_router(auth_router)
 
 # Shared instances (model and gallery loaded once at startup)
@@ -93,7 +102,7 @@ def decode_image(upload: UploadFile) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 @app.post('/identify')
-async def identify(image: UploadFile = File(...)):
+async def identify(image: UploadFile = File(...), _: dict = Depends(require_admin)):
     """
     Detect and identify all faces in the uploaded image.
 
@@ -121,8 +130,9 @@ async def identify(image: UploadFile = File(...)):
 
 @app.post('/register')
 async def register(
-    name: str = Form(...),
-    images: list[UploadFile] = File(...),
+    name:   str               = Form(...),
+    images: list[UploadFile]  = File(...),
+    _:      dict              = Depends(require_admin),
 ):
     """
     Register a person into the gallery using one or more uploaded images.
@@ -152,7 +162,7 @@ async def register(
 
 
 @app.delete('/identities/{name}')
-async def remove_identity(name: str):
+async def remove_identity(name: str, _: dict = Depends(require_admin)):
     """Remove a person from the gallery."""
     removed = recognizer.remove(name)
     if not removed:
@@ -167,25 +177,55 @@ async def list_identities():
 
 
 # ---------------------------------------------------------------------------
+# Settings — live-tunable cooldowns and thresholds
+# ---------------------------------------------------------------------------
+
+@app.get('/settings')
+async def get_settings():
+    """Return the current tunable settings."""
+    return {
+        'settings': settings_store.get_all(),
+        'defaults': settings_store.DEFAULTS,
+        'schema':   {
+            k: {'min': lo, 'max': hi, 'type': typ.__name__}
+            for k, (_, typ, lo, hi) in settings_store.SCHEMA.items()
+        },
+    }
+
+
+@app.put('/settings')
+async def update_settings(body: dict, _: dict = Depends(require_admin)):
+    """Apply a partial settings update. Unknown keys / out-of-bounds values raise 400."""
+    try:
+        new_state = settings_store.update(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {'settings': new_state}
+
+
+# ---------------------------------------------------------------------------
 # Live surveillance endpoints
 # ---------------------------------------------------------------------------
 
 @app.post('/surveillance/start')
-async def surveillance_start():
+async def surveillance_start(_: dict = Depends(require_admin)):
     """Activate the surveillance system (browser will start sending frames)."""
     surveillance.start()
     return {'active': surveillance.is_active}
 
 
 @app.post('/surveillance/stop')
-async def surveillance_stop():
+async def surveillance_stop(_: dict = Depends(require_admin)):
     """Deactivate surveillance, flush session to history, and clear the buffer."""
     surveillance.stop()
     return {'active': surveillance.is_active}
 
 
 @app.post('/surveillance/ingest')
-async def surveillance_ingest(image: UploadFile = File(...)):
+async def surveillance_ingest(
+    image: UploadFile = File(...),
+    _:     dict       = Depends(require_admin),
+):
     """Receive a JPEG frame captured by the browser, process and store it."""
     data = await image.read()
     loop = asyncio.get_running_loop()
@@ -262,6 +302,14 @@ async def surveillance_highlight_image(highlight_id: str):
 async def history_list():
     """List all completed surveillance sessions, newest first."""
     return {'sessions': history_db.list_sessions()}
+
+
+@app.delete('/history/{session_id}')
+async def history_delete(session_id: str, _: dict = Depends(require_admin)):
+    """Permanently remove a saved session and all of its frames + thumbnails."""
+    if not history_db.delete_session(session_id):
+        raise HTTPException(status_code=404, detail='Session not found.')
+    return {'ok': True}
 
 
 @app.get('/history/{session_id}/frame')

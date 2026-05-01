@@ -53,8 +53,80 @@ export async function registerBlob(name, blob) {
 }
 
 export async function listIdentities() {
-  const res = await fetch(`${BASE}/identities`)
+  const res = await fetch(`${BASE}/identities`, { credentials: 'include' })
   if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function deleteIdentity(name) {
+  const res = await fetch(`${BASE}/identities/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
+// Settings (admin)
+// ---------------------------------------------------------------------------
+
+export async function getSettings() {
+  const res = await fetch(`${BASE}/settings`, { credentials: 'include' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function updateSettings(values) {
+  const res = await fetch(`${BASE}/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(values),
+  })
+  if (!res.ok) {
+    let detail = await res.text()
+    try { detail = JSON.parse(detail).detail || detail } catch {}
+    throw new Error(detail)
+  }
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
+// User management (admin)
+// ---------------------------------------------------------------------------
+
+export async function listUsers() {
+  const res = await fetch(`${BASE}/auth/users`, { credentials: 'include' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function createUser(username, password, role) {
+  const res = await fetch(`${BASE}/auth/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username, password, role }),
+  })
+  if (!res.ok) {
+    let detail = await res.text()
+    try { detail = JSON.parse(detail).detail || detail } catch {}
+    throw new Error(detail)
+  }
+  return res.json()
+}
+
+export async function deleteUser(username) {
+  const res = await fetch(`${BASE}/auth/users/${encodeURIComponent(username)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    let detail = await res.text()
+    try { detail = JSON.parse(detail).detail || detail } catch {}
+    throw new Error(detail)
+  }
   return res.json()
 }
 
@@ -66,6 +138,12 @@ export async function startSurveillance(cameraIndex = 0) {
 
 export async function stopSurveillance() {
   const res = await fetch(`${BASE}/surveillance/stop`, { method: 'POST' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getSurveillanceStatus() {
+  const res = await fetch(`${BASE}/surveillance/status`, { credentials: 'include' })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }

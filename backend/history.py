@@ -221,6 +221,29 @@ class HistoryDB:
         return min(files, key=lambda f: abs(int(f.stem) - timestamp_ms))
 
     # ------------------------------------------------------------------
+    # Deletion — admin removes individual sessions from the History tab
+    # ------------------------------------------------------------------
+
+    def delete_session(self, session_id: str) -> bool:
+        """
+        Remove a session, its highlights, frames and thumbnails. Returns
+        False if the session does not exist. Foreign-key cascade handles
+        the highlight rows; on-disk files are removed manually.
+        """
+        row = self._con.execute(
+            'SELECT id FROM sessions WHERE id=?', (session_id,)
+        ).fetchone()
+        if row is None:
+            return False
+
+        session_dir = STORAGE_ROOT / 'sessions' / session_id
+        shutil.rmtree(session_dir, ignore_errors=True)
+
+        self._con.execute('DELETE FROM sessions WHERE id=?', (session_id,))
+        self._con.commit()
+        return True
+
+    # ------------------------------------------------------------------
     # Retention — called once per session start
     # ------------------------------------------------------------------
 

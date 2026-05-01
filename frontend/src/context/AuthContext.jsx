@@ -7,8 +7,9 @@ const AuthContext = createContext(null)
  * Provides authentication state to the whole app.
  *
  * Values exposed via useAuth():
- *   user    — { username } when logged in, null otherwise
+ *   user    — { username, role } when logged in, null otherwise
  *   loading — true while the initial /auth/me check is in flight
+ *   isAdmin — convenience boolean
  *   login(username, password) — resolves on success, throws on failure
  *   logout()                  — clears the cookie and resets user to null
  */
@@ -34,8 +35,10 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  const isAdmin = user?.role === 'admin'
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

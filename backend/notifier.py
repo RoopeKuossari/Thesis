@@ -20,13 +20,14 @@ import numpy as np
 import requests
 from PIL import Image
 
+from backend import settings
+
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
-# Minimum seconds between notifications (prevents spam while unknown stays on screen)
-COOLDOWN_SECONDS = 60
+# Minimum seconds between notifications is read from settings.alert_cooldown_seconds.
 
 _last_notified_at: float = 0.0
 
@@ -56,7 +57,7 @@ def notify_unknown(
     now = time.time()
 
     # Cooldown: don't repeat the alert while the same person stays on screen
-    if now - _last_notified_at < COOLDOWN_SECONDS:
+    if now - _last_notified_at < settings.get('alert_cooldown_seconds'):
         return
 
     _last_notified_at = now

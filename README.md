@@ -78,19 +78,35 @@ cd ..
 
 The system requires a login before the UI is accessible. Accounts are managed locally — there is no public registration.
 
-### Create the first account
+### User roles
+
+Every account has one of two roles:
+
+| Role | Can | Cannot |
+|---|---|---|
+| **admin** | Watch the live feed, start/stop surveillance, register faces, tune all settings, manage users, delete history footages | — |
+| **viewer** | Watch the live feed (when an admin has started it), review history | Start/stop surveillance, register or delete faces, change settings, manage users, delete history |
+
+The role is shown in the top-right corner of the app — hover over the username to open the account menu (admins see *Settings* and *Logout*; viewers see only *Logout*).
+
+### Create the first (admin) account
 
 ```bash
 source .venv/bin/activate
-python -m backend.create_user create --username admin
+python -m backend.create_user create --username admin --role admin
 ```
 
-You will be prompted to enter and confirm a password (8+ characters). Additional commands:
+You will be prompted to enter and confirm a password (8+ characters). Once you have one admin account, additional users — viewers and other admins — are easiest to create from the **Settings → Users** panel inside the web UI.
+
+### CLI account management
 
 ```bash
-python -m backend.create_user list                      # list all accounts
+python -m backend.create_user create --username alice --role viewer
+python -m backend.create_user list                      # list accounts with roles
 python -m backend.create_user delete --username alice   # remove an account
 ```
+
+`--role` accepts `admin` or `viewer` (defaults to `admin` so the first bootstrap user always has full access). The CLI is also the only safe way to recover if you somehow lock yourself out of the web UI.
 
 Passwords are stored as bcrypt hashes — the database never contains plain-text credentials.
 
@@ -197,10 +213,17 @@ Load it before starting the backend (see Running the system below).
 - A **60-second cooldown** prevents repeated alerts while the same unknown person stays on screen
 - The alert includes a cropped photo of the face
 
-Tunables:
-- `LOITERING_SECONDS` in `backend/surveillance.py` — how long an unknown must stay before being flagged as loitering (default 5 s)
-- `KNOWN_GRACE_SECONDS` in `backend/surveillance.py` — how long after a known person leaves the alert remains suppressed (default 60 s)
-- `COOLDOWN_SECONDS` in `backend/notifier.py` — gap between repeat alerts (default 60 s)
+Tunables (all editable live from the **Settings** page; admin only):
+
+| Setting | Default | What it controls |
+|---|---|---|
+| Loitering threshold | 5 s | How long an unknown must stay before being flagged as loitering |
+| Known-person grace | 60 s | How long after a known person leaves the alert remains suppressed |
+| Telegram alert cooldown | 60 s | Gap between repeat alerts |
+| Scene grace | 5 s | How long the active highlight stays open after the last face leaves |
+| Identity match threshold | 0.9 | Cosine distance below which a face counts as a known person (lower = stricter) |
+
+Updates take effect on the next ingested frame — no restart required. Persisted to `storage/settings.json`.
 
 ---
 
@@ -244,7 +267,7 @@ Open `http://localhost:5173` in your browser. You will be prompted to sign in �
 
 The app opens on the **Surveillance** tab by default.
 
-1. Click **Start Surveillance** — the browser asks for camera permission, then begins streaming
+1. Click **Start Surveillance** — the browser asks for camera permission, then begins streaming (admins only — viewers see "Waiting for an admin to start a session…" until an admin starts one, after which the live feed appears automatically)
 2. The live feed is annotated with bounding boxes and a timestamp in the bottom-right corner
 3. Face boxes are colour-coded:
    - **Green** — known person (matched in gallery)
@@ -282,6 +305,19 @@ Click **Jump** on any highlight card to seek directly to that moment in the DVR.
 
 ---
 
+## Settings page (admin only)
+
+Admins reach the Settings page from the account menu in the top-right corner. It contains four panels:
+
+- **Tuning** — sliders + numeric inputs for the identity-match threshold, scene grace, loitering threshold, known-person grace and Telegram alert cooldown. Each row has a *Reset* button that snaps the value back to its default. Changes are debounced and persisted to `storage/settings.json`; the running surveillance system picks them up on the next frame.
+- **Known faces** — list of registered identities with *Remove*, plus a webcam capture button to add a new person without leaving the page.
+- **History footages** — every saved session, with a *Delete* button that removes the database row and the on-disk frames + thumbnails for that session.
+- **Users** — create new admin or viewer accounts (username + 8-char password + role) and delete existing ones. You cannot delete your own account, and the system refuses to delete the last remaining admin.
+
+Viewers do not see the *Settings* entry in the account menu and any direct attempt to call the underlying admin endpoints returns `403 Admin privilege required.`.
+
+---
+
 ## History tab
 
 Every completed surveillance session is automatically saved and accessible from the **History** tab.
@@ -306,12 +342,18 @@ Click any session card to open it. The playback view works identically to the DV
 
 ## Registering a person
 
-### Option A — from the webcam (recommended)
+Registration is admin-only. Three ways:
+
+### Option A — from the Settings page (recommended for one-off adds)
+1. Open the account menu in the top-right corner → **Settings**
+2. In the **Known faces** panel, type a name and click **Add face from webcam**
+
+### Option B — from the Webcam tab (good for sweeping multiple angles)
 1. Switch to the **Webcam** tab and start the camera
 2. Type a name in the field below the video
 3. Click **"Register from webcam"** — repeat from different distances and angles for best results
 
-### Option B — from photo files
+### Option C — from photo files
 
 Linux / WSL2:
 ```bash
@@ -333,36 +375,58 @@ python -m backend.register --name "YourName" --images photo1.jpeg photo2.jpeg ph
 
 The backend runs at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
 
+Every endpoint except `POST /auth/login`, `POST /auth/logout` and `GET /auth/me` requires a valid session cookie. Endpoints marked **admin** additionally require the caller's role to be `admin`; viewers receive `403 Admin privilege required.`.
+
+### Authentication & user management
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/auth/login` | public | Verify credentials, set `access_token` cookie. Response includes `username` and `role`. |
+| `POST` | `/auth/logout` | public | Clear the auth cookie |
+| `GET` | `/auth/me` | any | Current user `{username, role}` (used by the frontend on page load) |
+| `GET` | `/auth/users` | admin | List every account with role and creation timestamp |
+| `POST` | `/auth/users` | admin | Create a new user `{username, password, role}` |
+| `DELETE` | `/auth/users/{username}` | admin | Remove a user (refuses self-deletion or removing the last admin) |
+
+### Settings
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/settings` | any | Current values, defaults and bounds schema for every tunable |
+| `PUT` | `/settings` | admin | Apply a partial update (unknown keys / out-of-bounds values → 400) |
+
 ### Identification & registration
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/identify` | Detect and identify all faces in an uploaded image |
-| `POST` | `/register` | Register a person with one or more uploaded images |
-| `DELETE` | `/identities/{name}` | Remove a person from the gallery |
-| `GET` | `/identities` | List all registered identities |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/identify` | admin | Detect and identify all faces in an uploaded image |
+| `POST` | `/register` | admin | Register a person with one or more uploaded images |
+| `DELETE` | `/identities/{name}` | admin | Remove a person from the gallery |
+| `GET` | `/identities` | any | List all registered identities |
 
 ### Surveillance
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/surveillance/start` | Activate the surveillance system |
-| `POST` | `/surveillance/stop` | Deactivate surveillance, flush session to history |
-| `POST` | `/surveillance/ingest` | Receive an annotated JPEG frame from the browser |
-| `GET` | `/surveillance/stream` | MJPEG live stream of annotated frames |
-| `GET` | `/surveillance/frame?t={ms}` | Stored frame closest to Unix timestamp (ms) |
-| `GET` | `/surveillance/buffer` | Buffer metadata: start/end timestamps, frame count |
-| `GET` | `/surveillance/highlights` | Highlight event list for the current session |
-| `GET` | `/surveillance/highlight/{id}/image` | Thumbnail JPEG for a specific highlight |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/surveillance/start` | admin | Activate the surveillance system |
+| `POST` | `/surveillance/stop` | admin | Deactivate surveillance, flush session to history |
+| `POST` | `/surveillance/ingest` | admin | Receive an annotated JPEG frame from the browser |
+| `GET` | `/surveillance/status` | any | `{active, start, end, frames}` — used by viewers to detect when a session begins |
+| `GET` | `/surveillance/stream` | any | MJPEG live stream of annotated frames |
+| `GET` | `/surveillance/frame?t={ms}` | any | Stored frame closest to Unix timestamp (ms) |
+| `GET` | `/surveillance/buffer` | any | Buffer metadata: start/end timestamps, frame count |
+| `GET` | `/surveillance/highlights` | any | Highlight event list for the current session |
+| `GET` | `/surveillance/highlight/{id}/image` | any | Thumbnail JPEG for a specific highlight |
 
 ### History
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/history` | List all completed sessions (newest first) |
-| `GET` | `/history/{session_id}/frame?t={ms}` | Stored frame from a past session closest to timestamp |
-| `GET` | `/history/{session_id}/highlights` | All highlights for a past session |
-| `GET` | `/history/{session_id}/highlight/{id}/image` | Thumbnail JPEG for a past highlight |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/history` | any | List all completed sessions (newest first) |
+| `DELETE` | `/history/{session_id}` | admin | Permanently delete a saved session and all of its frames + thumbnails |
+| `GET` | `/history/{session_id}/frame?t={ms}` | any | Stored frame from a past session closest to timestamp |
+| `GET` | `/history/{session_id}/highlights` | any | All highlights for a past session |
+| `GET` | `/history/{session_id}/highlight/{id}/image` | any | Thumbnail JPEG for a past highlight |
 
 ### Example with curl
 
@@ -406,12 +470,12 @@ curl http://localhost:8000/surveillance/highlights | python -m json.tool
 ```
 
 `is_loitering` is set to `true` for `Unknown` faces when the unknown group has been
-continuously present for `LOITERING_SECONDS` (5 s by default). Known faces and spoofs
-always report `false`. Telegram alerts only fire when at least one face has
-`is_loitering: true` and no known person is in frame.
+continuously present for the *Loitering threshold* setting (5 s by default; editable live
+from **Settings → Tuning**). Known faces and spoofs always report `false`. Telegram alerts
+only fire when at least one face has `is_loitering: true` and no known person is in frame.
 
 `distance` is the L2 distance between L2-normalised embeddings (range 0–2).
-A face is identified if `distance < IDENTITY_THRESHOLD` (default `0.9`, tunable in `backend/recognizer.py`).
+A face is identified if `distance < identity_threshold` (default `0.9`, editable live from the **Settings → Tuning** panel; persisted to `storage/settings.json`).
 
 Spoof faces have `name: "Spoof"` and `distance: null` — ArcFace is skipped for them.
 `liveness_score` is the MiniFASNet confidence that the face is real (range 0–1).
@@ -435,30 +499,34 @@ Thesis/                             # repo root
 │   ├── recognizer.py               # ArcFace embeddings + gallery matching
 │   ├── liveness.py                 # MiniFASNet anti-spoofing (liveness detection)
 │   ├── surveillance.py             # Surveillance: ingest, ring buffer, highlights, disk persistence
-│   ├── history.py                  # SQLite session history + 7-day retention
-│   ├── auth.py                     # bcrypt password hashing + JWT helpers
-│   ├── auth_router.py              # FastAPI auth endpoints (login / logout / me)
-│   ├── create_user.py              # CLI account management tool
+│   ├── history.py                  # SQLite session history + 7-day retention + delete_session
+│   ├── auth.py                     # bcrypt + JWT + roles + require_admin dependency
+│   ├── auth_router.py              # FastAPI auth + user-management endpoints
+│   ├── settings.py                 # Live-tunable thresholds / cooldowns (JSON-persisted)
+│   ├── create_user.py              # CLI account management (supports --role)
 │   ├── register.py                 # CLI face registration tool
 │   ├── notifier.py                 # Telegram alert sender
-│   └── main.py                     # FastAPI REST API + auth middleware
+│   └── main.py                     # FastAPI REST API + auth middleware + admin gating
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx                 # Tab layout + auth gate + logout button
-│   │   ├── api.js                  # API client
+│   │   ├── App.jsx                 # Tab layout, role-aware tabs, settings view router
+│   │   ├── api.js                  # API client (auth, settings, users, history delete, …)
 │   │   ├── context/
-│   │   │   └── AuthContext.jsx     # Auth state provider (useAuth hook)
+│   │   │   └── AuthContext.jsx     # Auth state provider (exposes user, role, isAdmin)
 │   │   └── components/
 │   │       ├── LoginPage.jsx       # Login form
-│   │       ├── SurveillanceView.jsx # Live stream, DVR rewind, highlights
+│   │       ├── UserMenu.jsx        # Top-right account dropdown (role + Settings + Logout)
+│   │       ├── SettingsPage.jsx    # Admin: tuning sliders, identities, history, users
+│   │       ├── SurveillanceView.jsx # Live stream + DVR (admin can start/stop; viewer auto-tracks state)
 │   │       ├── HistoryView.jsx     # Session list (History tab)
 │   │       ├── SessionPlayback.jsx # DVR playback for a past session
-│   │       ├── WebcamView.jsx      # Live webcam + registration
-│   │       ├── FileUpload.jsx      # Image upload + identification
+│   │       ├── WebcamView.jsx      # Live webcam + registration (admin only)
+│   │       ├── FileUpload.jsx      # Image upload + identification (admin only)
 │   │       └── FaceOverlay.jsx     # Bounding box drawing (canvas)
 │   └── package.json
 ├── storage/                        # Created automatically on first run
-│   ├── history.db                  # SQLite database
+│   ├── history.db                  # SQLite database (sessions, highlights, users)
+│   ├── settings.json               # Persisted admin overrides for tunable thresholds
 │   └── sessions/
 │       └── YYYY-MM-DD_HH-MM-SS/   # One directory per session
 │           ├── frames/             # Annotated JPEG frames named by Unix ms

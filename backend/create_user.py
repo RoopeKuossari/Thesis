@@ -33,6 +33,13 @@ def main() -> None:
         default=None,
         help='Password (8+ chars). Prompted securely if omitted.',
     )
+    p_create.add_argument(
+        '--role',
+        choices=('admin', 'viewer'),
+        default='admin',
+        help='Account role. Defaults to admin so the first bootstrap user '
+             'can manage everything; create viewers via the web UI.',
+    )
 
     # delete
     p_delete = sub.add_parser('delete', help='Delete a user account.')
@@ -61,8 +68,8 @@ def main() -> None:
             print('Error: password must be at least 8 characters.')
             sys.exit(1)
 
-        if db.create_user(args.username, password):
-            print(f'User "{args.username}" created successfully.')
+        if db.create_user(args.username, password, args.role):
+            print(f'User "{args.username}" ({args.role}) created successfully.')
         else:
             print(f'Error: username "{args.username}" is already taken.')
             sys.exit(1)
@@ -86,7 +93,7 @@ def main() -> None:
         if users:
             print(f'{len(users)} user(s):')
             for u in users:
-                print(f'  {u}')
+                print(f'  {u["username"]:20s}  {u["role"]}')
         else:
             print('No users registered. Create one with:')
             print('  python -m backend.create_user create --username <name>')

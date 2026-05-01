@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import {
   startSurveillance, stopSurveillance,
   getSurveillanceBuffer, ingestSurveillanceFrame,
-  getHighlights,
+  getHighlights, getSurveillanceStatus,
 } from '../api'
+import { useAuth } from '../context/AuthContext'
 
 // How often to capture a frame and send it to the backend for processing
 const CAPTURE_INTERVAL_MS = 600
@@ -31,6 +32,7 @@ function fmtHighlightRange(h) {
 }
 
 export default function SurveillanceView() {
+  const { isAdmin } = useAuth()
   const [mode, setMode]           = useState('stopped') // 'stopped'|'live'|'dvr'
   const [playing, setPlaying]     = useState(false)
   const [bufInfo, setBufInfo]     = useState(null)
@@ -52,6 +54,35 @@ export default function SurveillanceView() {
   useEffect(() => { modeRef.current = mode },      [mode])
   useEffect(() => { bufInfoRef.current = bufInfo }, [bufInfo])
   useEffect(() => { scrubTimeRef.current = scrubTime }, [scrubTime])
+
+  // ------------------------------------------------------------------
+  // Viewer mode — surveillance is driven by an admin browser, so track the
+  // backend state and flip into 'live' when an admin starts a session.
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    if (isAdmin) return
+    let cancelled = false
+
+    async function poll() {
+      try {
+        const s = await getSurveillanceStatus()
+        if (cancelled) return
+        if (s.active && modeRef.current === 'stopped') {
+          setLiveKey(k => k + 1)
+          setMode('live')
+        } else if (!s.active && modeRef.current !== 'stopped') {
+          setMode('stopped')
+          setBufInfo(null)
+          setScrubTime(null)
+          setHighlights([])
+        }
+      } catch { /* ignore */ }
+    }
+
+    poll()
+    const id = setInterval(poll, 2000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [isAdmin])
 
   // ------------------------------------------------------------------
   // Buffer polling — active while surveillance is running
@@ -249,11 +280,12 @@ export default function SurveillanceView() {
 
       {/* Controls */}
       <div className="controls">
-        {mode === 'stopped' ? (
+        {isAdmin && mode === 'stopped' && (
           <button className="btn btn-primary" onClick={handleStart}>
             Start Surveillance
           </button>
-        ) : (
+        )}
+        {isAdmin && mode !== 'stopped' && (
           <button className="btn btn-danger" onClick={handleStop}>
             Stop
           </button>
@@ -268,6 +300,10 @@ export default function SurveillanceView() {
               Go Live
             </button>
           </>
+        )}
+
+        {!isAdmin && mode === 'stopped' && (
+          <span className="hint">Waiting for an admin to start a session…</span>
         )}
       </div>
 

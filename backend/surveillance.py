@@ -16,28 +16,16 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from backend import settings
 from backend.notifier import notify_unknown
 
 BUFFER_SECONDS = 600       # 10 minutes of footage in ring buffer
 
-# Highlight settings
-# A "scene" is one continuous interval where someone is in frame. The scene
-# ends only when nobody (known or unknown) has been seen for SCENE_GRACE
-# seconds — brief gaps don't split a single scene into two highlights.
-# The same grace also drives unknown-group loitering tracking and spoof
-# stamp dedup.
-SCENE_GRACE       = 5.0
 HIGHLIGHT_THUMB_W = 480     # thumbnail width stored per highlight
 
-# Loitering — an unknown is flagged as loitering after staying continuously
-# in frame for this many seconds. Telegram alerts only fire for loitering
-# unknowns when no known person is present.
-LOITERING_SECONDS = 5.0
-
-# Grace period after a known person was last seen — alerts are suppressed
-# during this window even if the known person has left frame, on the
-# assumption that they may briefly step out (e.g. with a guest still present).
-KNOWN_GRACE_SECONDS = 60.0
+# Timing values (scene grace, loitering threshold, known-person grace) are
+# read from `backend.settings` on every frame so admins can tune them live
+# from the Settings page.
 
 
 class SurveillanceSystem:
@@ -67,7 +55,7 @@ class SurveillanceSystem:
 
         # Active scene state — one open interval highlight at a time. Scene
         # category flips in place between known/unknown/mixed_unknown as
-        # people come and go (with SCENE_GRACE smoothing brief gaps).
+        # people come and go (with the scene-grace setting smoothing brief gaps).
         self._scene_id:           str | None = None
         self._scene_category:     str | None = None
         self._scene_primary_name: str | None = None
@@ -75,7 +63,7 @@ class SurveillanceSystem:
         self._scene_last_unknown: float      = 0.0
 
         # Spoof stamp dedup — a new orange highlight is only created if no
-        # spoof has been seen for at least SCENE_GRACE seconds.
+        # spoof has been seen for at least one scene-grace window.
         self._spoof_last_seen: float = 0.0
 
         # Unknown-group tracking — drives the loitering alert gate. Kept
@@ -185,7 +173,7 @@ class SurveillanceSystem:
         unk_loitering = (
             self._unk_active
             and self._unk_first_seen > 0.0
-            and (now - self._unk_first_seen) >= LOITERING_SECONDS
+            and (now - self._unk_first_seen) >= settings.get('loitering_seconds')
         )
         for f in faces:
             f['is_loitering'] = (f['name'] == 'Unknown' and unk_loitering)
@@ -202,7 +190,7 @@ class SurveillanceSystem:
         # elapsed value is 0).
         # on_sent increments the real alert counter only when the notification
         # actually fires (after the cooldown check in notifier.py).
-        known_recent = (now - self._last_known_seen_at) < KNOWN_GRACE_SECONDS
+        known_recent = (now - self._last_known_seen_at) < settings.get('known_grace_seconds')
         if unk_loitering and not known_recent:
             for f in faces:
                 if f['name'] == 'Unknown':
@@ -309,7 +297,7 @@ class SurveillanceSystem:
                 self._unk_active     = True
                 self._unk_first_seen = now
         else:
-            if self._unk_active and (now - self._unk_last_seen) > SCENE_GRACE:
+            if self._unk_active and (now - self._unk_last_seen) > settings.get('scene_grace'):
                 self._unk_active     = False
                 self._unk_first_seen = 0.0
 
@@ -320,8 +308,9 @@ class SurveillanceSystem:
     def _update_highlights(self, faces: list, img: Image.Image, now: float):
         """
         Drive a single open scene highlight that flips between green / red /
-        yellow as known/unknown people come and go (with SCENE_GRACE smoothing
-        brief gaps). Spoofs are emitted as standalone orange stamps.
+        yellow as known/unknown people come and go (with the scene-grace
+        setting smoothing brief gaps). Spoofs are emitted as standalone
+        orange stamps.
         """
         has_known   = any(f['name'] not in ('Unknown', 'Spoof') for f in faces)
         has_unknown = any(f['name'] == 'Unknown' for f in faces)
@@ -340,11 +329,11 @@ class SurveillanceSystem:
 
         known_recent = (
             self._scene_last_known > 0.0
-            and (now - self._scene_last_known) < SCENE_GRACE
+            and (now - self._scene_last_known) < settings.get('scene_grace')
         )
         unknown_recent = (
             self._scene_last_unknown > 0.0
-            and (now - self._scene_last_unknown) < SCENE_GRACE
+            and (now - self._scene_last_unknown) < settings.get('scene_grace')
         )
 
         # --- Scene state machine ---
@@ -400,7 +389,7 @@ class SurveillanceSystem:
                     self._scene_primary_name = primary_known
                     self._update_scene_name(self._scene_id, primary_known)
         else:
-            # Nobody seen for >SCENE_GRACE — finalize the scene
+            # Nobody seen for longer than the scene-grace window — finalize the scene
             if self._scene_id is not None:
                 end_t = max(self._scene_last_known, self._scene_last_unknown)
                 self._update_scene_end_t(self._scene_id, end_t)
@@ -415,7 +404,7 @@ class SurveillanceSystem:
 
         # --- Spoof stamps (parallel, point-in-time) ---
         if has_spoof:
-            if (now - self._spoof_last_seen) >= SCENE_GRACE:
+            if (now - self._spoof_last_seen) >= settings.get('scene_grace'):
                 self._add_spoof_stamp(img, now)
             self._spoof_last_seen = now
 

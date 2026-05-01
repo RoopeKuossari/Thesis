@@ -3,6 +3,7 @@ import numpy as np
 from pathlib import Path
 from deepface import DeepFace
 
+from backend import settings
 from backend.detector import detect_and_crop
 
 GALLERY_PATH = 'model/gallery.json'
@@ -10,10 +11,6 @@ GALLERY_PATH = 'model/gallery.json'
 # ArcFace is one of the strongest pretrained face recognition models.
 # Other options: "Facenet512", "VGG-Face", "GhostFaceNet"
 EMBEDDING_MODEL_NAME = 'ArcFace'
-
-# Distance threshold for ArcFace cosine distance (range 0–2).
-# ArcFace embeddings are L2-normalised; 0.68 is the standard LFW threshold.
-IDENTITY_THRESHOLD = 0.9
 
 
 class FaceRecognizer:
@@ -23,16 +20,16 @@ class FaceRecognizer:
 
     The gallery stores one mean embedding per registered person.
     Identification uses nearest-neighbour search with a distance threshold.
+    The threshold is read from `backend.settings` on every call so admin
+    tweaks via the UI take effect on the next frame.
     """
 
     def __init__(
         self,
         gallery_path: str = GALLERY_PATH,
-        threshold: float = IDENTITY_THRESHOLD,
         model_name: str = EMBEDDING_MODEL_NAME,
     ):
         self.model_name = model_name
-        self.threshold = threshold
         self.gallery_path = Path(gallery_path)
 
         # Warm up DeepFace (downloads weights on first run)
@@ -139,7 +136,7 @@ class FaceRecognizer:
                 best_dist = dist
                 best_name = name
 
-        if best_dist > self.threshold:
+        if best_dist > settings.get('identity_threshold'):
             best_name = 'Unknown'
 
         return {'name': best_name, 'distance': round(best_dist, 4)}
