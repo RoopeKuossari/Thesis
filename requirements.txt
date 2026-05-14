@@ -21,7 +21,7 @@ python-multipart==0.0.24
 
 # Authentication
 bcrypt>=4.0.0
-python-jose[cryptography]==3.3.0
+python-jose[cryptography]==3.4.0
 
 # Utilities
 Pillow
